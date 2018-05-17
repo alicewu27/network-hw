@@ -1,0 +1,6 @@
+ctcp
+*.o
+#*#
+*~
+CMakeLists.txt
+cmake-build-debug
