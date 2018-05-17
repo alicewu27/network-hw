@@ -164,14 +164,17 @@ void ctcp_receive(ctcp_state_t *state, ctcp_segment_t *segment, size_t len) {
 
 void ctcp_output(ctcp_state_t *state) {
   /* FIXME */
-  ctcp_segment_t *segment = state->segments->head;
+  ll_node_t *node =  state->segments->head;
+  ctcp_segment_t *segment = node->object;
   int bufspace = conn_bufspace(state->conn);
   if (bufspace == -1) {
     ctcp_destroy(state);
   }
-  if (bufspace >= sizeof(segment->data)){
-    if (conn_output(state->conn, segment->data, sizeof(segment->data)) == sizeof(segment->data)) {
-      ll_remove(state->segments, segment);
+  if (segment->data) {
+    if (bufspace >= sizeof(segment->data)){
+      if (conn_output(state->conn, segment->data, sizeof(segment->data)) == sizeof(segment->data)) {
+        ll_remove(state->segments, node);
+      }
     }
   }
 }
@@ -191,7 +194,7 @@ void ctcp_timer() {
         ll_add(state->segments, segment);
       }
     } else {
-      ctcp_segment_t* segment_resend = state->buffer->head;
+      ctcp_segment_t* segment_resend = state->buffer->head->object;
       long cur_time = current_time();
       if (cur_time - state->last_sent_time > state->cfg.rt_timeout) {  // time out 2 seconds
         if (state->retransmitted_times == 5) {

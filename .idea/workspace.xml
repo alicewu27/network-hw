@@ -22,21 +22,31 @@
   </component>
   <component name="FileEditorManager">
     <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
-      <file leaf-file-name="ctcp.c" pinned="false" current-in-tab="false">
+      <file leaf-file-name="ctcp.c" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/ctcp.c">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="-1511">
-              <caret line="81" column="24" lean-forward="false" selection-start-line="81" selection-start-column="24" selection-end-line="81" selection-end-column="24" />
+            <state relative-caret-position="308">
+              <caret line="199" column="46" lean-forward="true" selection-start-line="199" selection-start-column="46" selection-end-line="199" selection-end-column="46" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="README" pinned="false" current-in-tab="true">
+      <file leaf-file-name="README" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/README">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="-196">
               <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="ctcp_linked_list.h" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/ctcp_linked_list.h">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="-926">
+              <caret line="32" column="2" lean-forward="true" selection-start-line="32" selection-start-column="2" selection-end-line="32" selection-end-column="2" />
               <folding />
             </state>
           </provider>
@@ -75,6 +85,8 @@
       <find>ackno</find>
       <find>strlen</find>
       <find>confi</find>
+      <find>segment-&gt;data</find>
+      <find>segment_re</find>
     </findStrings>
     <replaceStrings>
       <replace>ackno</replace>
@@ -232,14 +244,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/ctcp_linked_list.h">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-295">
-          <caret line="32" column="2" lean-forward="true" selection-start-line="32" selection-start-column="2" selection-end-line="32" selection-end-column="2" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/ctcp_sys_internal.c">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="162">
@@ -280,18 +284,26 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/ctcp.c">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-1511">
-          <caret line="81" column="24" lean-forward="false" selection-start-line="81" selection-start-column="24" selection-end-line="81" selection-end-column="24" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/README">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="-196">
           <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/ctcp_linked_list.h">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-926">
+          <caret line="32" column="2" lean-forward="true" selection-start-line="32" selection-start-column="2" selection-end-line="32" selection-end-column="2" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/ctcp.c">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="308">
+          <caret line="199" column="46" lean-forward="true" selection-start-line="199" selection-start-column="46" selection-end-line="199" selection-end-column="46" />
           <folding />
         </state>
       </provider>
