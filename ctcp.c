@@ -89,11 +89,12 @@ fprintf(stderr, "init called %s\n", "");
   return state;
 }
 void free_segments_list(linked_list_t *list) {
-  ll_node_t *segment = list->head;
-  while(segment != NULL) {
+  ll_node_t *segment_node = list->head;
+  while(segment_node != NULL) {
     // ll_remove(list, segment);
-    free(segment);
-    segment = segment->next;
+    free(segment_node->object);
+    free(segment_node);
+    segment_node = segment_node->next;
   }
   ll_destroy(list);
 }
@@ -148,7 +149,10 @@ void ctcp_receive(ctcp_state_t *state, ctcp_segment_t *segment, size_t len) {
   if (ntohl(segment->flags) & ACK) {
     if (ntohl(segment->ackno) == state->seqno) {
       state->sent_ackno = ntohl(segment->ackno);
-      ll_remove(state->buffer, state->buffer->head);
+      if (state->buffer->head != NULL) {
+        free(state->buffer->head->object);
+        ll_remove(state->buffer, state->buffer->head);
+      }
       state->retransmitted_times = 0;
     }
   }
@@ -169,6 +173,7 @@ void ctcp_receive(ctcp_state_t *state, ctcp_segment_t *segment, size_t len) {
       state->received_ackno = ntohl(segment->seqno) + ntohl(segment->len);
     }
   }
+  free(segment);
 
 }
 
