@@ -15,7 +15,7 @@
 #include "ctcp_linked_list.h"
 #include "ctcp_sys.h"
 #include "ctcp_utils.h"
-
+#include "stdio.h"
 /**
  * Connection state.
  *
@@ -61,6 +61,7 @@ static ctcp_state_t *state_list;
 
 ctcp_state_t *ctcp_init(conn_t *conn, ctcp_config_t *cfg) {
   /* Connection could not be established. */
+fprintf(stderr, "init called %s\n", "");
   if (conn == NULL) {
     return NULL;
   }
@@ -84,6 +85,7 @@ ctcp_state_t *ctcp_init(conn_t *conn, ctcp_config_t *cfg) {
   state->retransmitted_times = 0;
   state->segments = ll_create();
   state->buffer = ll_create();
+  fprintf(stderr, "init call ended %s\n", "");
   return state;
 }
 void free_segments_list(linked_list_t *list) {
@@ -97,6 +99,7 @@ void free_segments_list(linked_list_t *list) {
 }
 void ctcp_destroy(ctcp_state_t *state) {
   /* Update linked list. */
+  fprintf(stderr, "destroy called %s\n", "");
   if (state->next)
     state->next->prev = state->prev;
 
@@ -113,6 +116,7 @@ void ctcp_destroy(ctcp_state_t *state) {
 
 void ctcp_read(ctcp_state_t *state) {
   /* FIXME */
+  fprintf(stderr, "read called %s\n", "");
   char input[MAX_SEG_DATA_SIZE];
   int data_size = conn_input(state->conn, input, MAX_SEG_DATA_SIZE);
   int fin_flag = data_size;
@@ -126,18 +130,19 @@ void ctcp_read(ctcp_state_t *state) {
   segment->ackno = htonl(state->received_ackno);
   segment->len = htonl(total_size);
   if (data_size > 0) {
-    strcpy(segment->data, input);
+    memcpy(segment->data, input, data_size);
   } else {
     segment->flags = FIN;
   }
   segment->flags |= ACK;
   segment->flags = htonl(segment->flags);
   ll_add (state->buffer, segment);
-  free(input);
 }
 
 void ctcp_receive(ctcp_state_t *state, ctcp_segment_t *segment, size_t len) {
   /* FIXME */
+  fprintf(stderr, "receive called %s\n", "");
+  
   if (ntohl(segment->flags) & ACK) {
     if (ntohl(segment->ackno) == state->seqno) {
       state->sent_ackno = ntohl(segment->ackno);
@@ -151,42 +156,46 @@ void ctcp_receive(ctcp_state_t *state, ctcp_segment_t *segment, size_t len) {
     if (state->seqno == state->sent_ackno) {
       ctcp_destroy(state);
     }
-    state->received_ackno = ntohl(segment->seqno) + len;
+    state->received_ackno = ntohl(segment->seqno) + segment->len;
   } else {
-    if (segment->data && segment->seqno == state->received_ackno) {
+    if (segment->seqno == state->received_ackno) {
       ll_add(state->segments, segment);
+      fprintf(stderr, "%s",segment->data);
       ctcp_output(state);
     }
-    state->received_ackno = ntohl(segment->seqno) + len;
+    state->received_ackno = ntohl(segment->seqno) + segment->len;
   }
 
 }
 
 void ctcp_output(ctcp_state_t *state) {
   /* FIXME */
+  fprintf(stderr, "output called %s", "");
   ll_node_t *node =  state->segments->head;
   ctcp_segment_t *segment = node->object;
   int bufspace = conn_bufspace(state->conn);
   if (bufspace == -1) {
     ctcp_destroy(state);
   }
-  if (segment->data) {
-    if (bufspace >= sizeof(segment->data)){
-      if (conn_output(state->conn, segment->data, sizeof(segment->data)) == sizeof(segment->data)) {
+ 
+  if (bufspace >= strlen(segment->data)){
+      if (conn_output(state->conn, segment->data, strlen(segment->data)) == strlen(segment->data)) {
         ll_remove(state->segments, node);
       }
     }
-  }
+    
+  
 }
 
 void ctcp_timer() {
   /* FIXME */
   ctcp_state_t *state = state_list;
   while (state != NULL) {
-    if (state->sent_ackno == state->seqno) {
+    if (state->sent_ackno == state->seqno) {      
       ll_node_t* segment_node = state->buffer->head;
-      if (segment_node != NULL) {
+      if (segment_node != NULL) {        
         ctcp_segment_t* segment = (ctcp_segment_t*)segment_node->object;
+        fprintf(stderr, "has message: %s with lenth %d",segment->data, segment->len);
         conn_send(state->conn, segment, segment->len);
         state->seqno += ntohl(segment->len);
         state->last_sent_time = current_time();
@@ -209,5 +218,6 @@ void ctcp_timer() {
     if (state->segments->length > 0) {
       ctcp_output(state);
     }
+    state = state->next;
   }
 }

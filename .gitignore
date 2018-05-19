@@ -3,4 +3,6 @@ ctcp
 #*#
 *~
 CMakeLists.txt
-cmake-build-debug
+cmake-build-debug/
+*.csv
+
