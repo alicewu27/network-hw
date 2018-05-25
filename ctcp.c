@@ -20,7 +20,7 @@
 #define FIN_SENT 1UL
 #define FIN_RECEIVED 1UL << 1
 #define EOF_FLAG 1UL << 2
-#define DESTROY_FLAG (1UL << 3 - 1)
+#define DESTROY_FLAG ((1UL << 3) - 1)
 
 /**
  * Connection state.
@@ -201,7 +201,7 @@ void ctcp_output(ctcp_state_t *state) {
         if (conn_output(state->conn, segment->data, strlen(segment->data)) == strlen(segment->data)) {
           ll_remove(state->output_buffer, node);
         } else {
-          fprintf(stderr, "output length not equal to segment data length %u", strlen(segment->data));
+          fprintf(stderr, "output length not equal to segment data length %z", strlen(segment->data));
         }
         if (ntohl(segment->flags) & FIN) {
           conn_output(state->conn, NULL, 0);
@@ -232,12 +232,13 @@ void ctcp_timer() {
         }
       }
     } else if (ll_length(state->send_buffer) > 0){
-      segment_to_send = state->send_buffer->head->object;
+      ll_node_t *seg_node = state->send_buffer->head;
+      segment_to_send = seg_node->object;
       if (ntohl(segment_to_send->flags) & FIN) {
         state->destroy_flag |= FIN_SENT;
       }
       ll_add(state->unacked_buffer, segment_to_send);
-      ll_remove(state->send_buffer, segment_to_send);
+      ll_remove(state->send_buffer, seg_node);
       state->seqno += ntohs(segment_to_send->len);
       state->last_sent_time = cur_time;
       state->retransmitted_times = 0;
