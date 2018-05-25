@@ -16,6 +16,12 @@
 #include "ctcp_sys.h"
 #include "ctcp_utils.h"
 #include "stdio.h"
+
+#define FIN_SENT 1UL
+#define FIN_RECEIVED 1UL << 1
+#define EOF_FLAG 1UL << 2
+#define DESTROY_FLAG (1UL << 3 - 1)
+
 /**
  * Connection state.
  *
@@ -30,7 +36,8 @@ struct ctcp_state {
 
   conn_t *conn;             /* Connection object -- needed in order to figure
                                out destination when sending */
-  linked_list_t *segments;  /* Linked list of segments sent to this connection.
+  linked_list_t *output_buffer;
+                               /* Linked list of segments sent to this connection.
                                It may be useful to have multiple linked lists
                                for unacknowledged segments, segments that
                                haven't been sent, etc. Lab 1 uses the
@@ -39,17 +46,17 @@ struct ctcp_state {
                                this if this is the case for you */
 
   /* FIXME: Add other needed fields. */
-  //linked_list_t *unacked_segments;
   ctcp_config_t cfg;
-  linked_list_t *buffer;
+  linked_list_t *send_buffer;
+  linked_list_t *unacked_buffer;
+  linked_list_t *ackno_list;
   uint32_t seqno;
-  uint32_t received_ackno;
-  uint32_t sent_ackno;
+  uint32_t ackno;
   int retransmitted_times;
-  int received_ackno_sent;
-  long last_received_time;
   long last_sent_time;
+  uint32_t destroy_flag;
 };
+
 
 /**
  * Linked list of connection states. Go through this in ctcp_timer() to
@@ -82,24 +89,21 @@ fprintf(stderr, "init called %s\n", "");
   /* FIXME: Do any other initialization here. */
   state->cfg = *cfg;
   state->seqno = 1;
-  state->sent_ackno = 1;
-  state->received_ackno = 1;
-  state->retransmitted_times = 0;
-  state->segments = ll_create();
-  state->buffer = ll_create();
-  state->received_ackno_sent = 0;
-  state->last_received_time = 0;
+  state->ackno = 1;
+  state->output_buffer = ll_create();
+  state->send_buffer = ll_create();
+  state->unacked_buffer = ll_create();
+  state->ackno_list = ll_create();
   state->last_sent_time = 0;
-  state->last_sent_ack_time = 0;
+  state->retransmitted_times = 0;
+  state->destroy_flag = 0;
   fprintf(stderr, "init call ended %s\n", "");
   return state;
 }
 void free_segments_list(linked_list_t *list) {
   ll_node_t *segment_node = list->head;
   while(segment_node != NULL) {
-    // ll_remove(list, segment);
     free(segment_node->object);
-    // free(segment_node);
     segment_node = segment_node->next;
   }
   ll_destroy(list);
@@ -114,8 +118,10 @@ void ctcp_destroy(ctcp_state_t *state) {
   conn_remove(state->conn);
 
   /* FIXME: Do any other cleanup here. */
-  free_segments_list(state->segments);
-  free_segments_list(state->buffer);
+  free_segments_list(state->output_buffer);
+  free_segments_list(state->send_buffer);
+  free_segments_list(state->unacked_buffer);
+  free_segments_list(state->ackno_list);
   free(state);
   end_client();
 }
@@ -123,86 +129,89 @@ void ctcp_destroy(ctcp_state_t *state) {
 
 void ctcp_read(ctcp_state_t *state) {
   /* FIXME */
-  fprintf(stderr, "read called %s\n", "");
   char input[MAX_SEG_DATA_SIZE];
   int data_size = conn_input(state->conn, input, MAX_SEG_DATA_SIZE);
-  int fin_flag = data_size;
-  if (fin_flag == -1) {
+  fprintf(stderr, "read data size = %u", data_size);
+  if (data_size == -1) {
+    state->destroy_flag |= EOF_FLAG;
     data_size = 0;
   }
-  uint16_t total_size = data_size > 0 ?
-          sizeof(ctcp_segment_t) + sizeof(char) * data_size : sizeof(ctcp_segment_t);
-  fprintf(stderr, "segment size = %u", total_size);
+  uint16_t total_size = sizeof(ctcp_segment_t) + sizeof(char) * data_size;
   ctcp_segment_t *segment = calloc(total_size, 1);
   segment->seqno = htonl(state->seqno);
   segment->len = htons(total_size);
-  fprintf(stderr, "segment size htons = %u",segment->len);
-  segment->window = MAX_SEG_DATA_SIZE;
+  segment->window = htons(MAX_SEG_DATA_SIZE);
   segment->cksum = 0;
   if (data_size > 0) {
     memcpy(segment->data, input, data_size);
-  } else {
+  } else if (state->destroy_flag & EOF_FLAG){
     segment->flags = FIN;
   }
-  segment->flags = SYN;
+  segment->flags |= ACK;
   segment->flags = htonl(segment->flags);
-  ll_add (state->buffer, segment);
+  ll_add (state->send_buffer, segment);
 }
 
 void ctcp_receive(ctcp_state_t *state, ctcp_segment_t *segment, size_t len) {
   /* FIXME */
   fprintf(stderr, "receive called %s\n", "");
-  state->last_received_time = current_time();
-  if (ntohl(segment->flags) & ACK) {
-    if (ntohl(segment->ackno) == state->seqno) {
-      state->sent_ackno = ntohl(segment->ackno);
-      if (state->buffer->head != NULL) {
-        free(state->buffer->head->object);
-        ll_remove(state->buffer, state->buffer->head);
+  if (ntohl(segment->ackno) == state->seqno) {
+      if (state->send_buffer->head != NULL) {
+        free(state->unacked_buffer->head->object);
+        ll_remove(state->unacked_buffer, state->unacked_buffer->head);
       }
       state->retransmitted_times = 0;
+  }
+
+  if (cksum(segment, sizeof(segment)) == segment->cksum) {
+    if (segment->data != NULL || ntohl(segment->flags) & FIN) {
+      uint32_t * ackno = calloc(sizeof(uint32_t), 1);
+      *ackno = ntohl(segment->seqno) + ntohs(segment->len);
+      ll_add(state->ackno_list, ackno);
+    }
+    if (ntohl(segment->seqno) == state->ackno) {
+      if (segment->data != NULL || ntohl(segment->flags) & FIN) {
+        ll_add(state->output_buffer, segment);
+        ctcp_output(state);
+      } else {
+        free(segment);
+      }
+      state->ackno += ntohs(segment->len);
+      fprintf(stderr, "%s", segment->data);
+    } else {
+      free(segment);
     }
   }
 
   if (ntohl(segment->flags) & FIN) {
-    conn_output(state->conn, NULL, 0);
-    if (state->seqno == state->sent_ackno) {
-      ctcp_destroy(state);
-    } else {
-      state->received_ackno += ntohs(segment->len);
-      state->received_ackno_sent = 0;
-    }
-  } else {
-    if (cksum(segment, sizeof(segment)) == segment->cksum) {
-      if (ntohl(segment->seqno) == state->received_ackno) {
-        ll_add(state->segments, segment);
-        fprintf(stderr, "%s", segment->data);
-        ctcp_output(state);
-        state->received_ackno += ntohs(segment->len);
-        state->received_ackno_sent = 0;
-      } else {  // duplicated segment, must also acknowledge it
-        state->received_ackno -= ntohs(segment->len);
-        state->received_ackno_sent = 0;
-      }
-    }
+    state->destroy_flag |= FIN_RECEIVED;
   }
-  free(segment);
+
 }
 
 void ctcp_output(ctcp_state_t *state) {
   /* FIXME */
   fprintf(stderr, "output called %s", "");
-  ll_node_t *node =  state->segments->head;
-  ctcp_segment_t *segment = node->object;
-  int bufspace = conn_bufspace(state->conn);
-  if (bufspace == -1) {
-    ctcp_destroy(state);
-  }
- 
-  if (bufspace >= strlen(segment->data)){
-      if (conn_output(state->conn, segment->data, strlen(segment->data)) == strlen(segment->data)) {
-        ll_remove(state->segments, node);
+  ll_node_t *node =  state->output_buffer->head;
+  while (node != NULL) {
+    ctcp_segment_t *segment = node->object;
+    int bufspace = conn_bufspace(state->conn);
+    if (segment->data != NULL) {
+      if (bufspace >= strlen(segment->data)){
+        if (conn_output(state->conn, segment->data, strlen(segment->data)) == strlen(segment->data)) {
+          ll_remove(state->output_buffer, node);
+        } else {
+          fprintf(stderr, "output length not equal to segment data length %u", strlen(segment->data));
+        }
+        if (ntohl(segment->flags) & FIN) {
+          conn_output(state->conn, NULL, 0);
+        }
       }
+    } else if (ntohl(segment->flags) & FIN) {
+      conn_output(state->conn, NULL, 0);
+    }
+    free(segment);
+    node = node->next;
   }
 }
 
@@ -210,54 +219,62 @@ void ctcp_timer() {
   /* FIXME */
   ctcp_state_t *state = state_list;
   while (state != NULL) {
-    if (state->sent_ackno == state->seqno) {      
-      ll_node_t* segment_node = state->buffer->head;
-      if (segment_node != NULL) {
-        ctcp_segment_t* segment = (ctcp_segment_t*)segment_node->object;
-        uint16_t len = ntohs(segment->len);
-        segment->ackno = htonl(state->received_ackno);
-        segment->flags |= htonl(ACK);
-        segment->cksum = cksum(segment, len);
-        fprintf(stderr, "has message: %s with lenth %u",segment->data, len);
-        conn_send(state->conn, segment, len);
-        state->received_ackno_sent = 1;
-        state->seqno += len;
-        state->last_sent_time = current_time();
-        state->retransmitted_times = 0;
-      } else {
-        long cur_time= current_time();
-        if (!state->received_ackno_sent && cur_time - state->last_received_time > state->cfg.rt_timeout) {
-          ctcp_segment_t *ack_segment = calloc(sizeof(ctcp_segment_t), 1);
-          ack_segment->seqno = htonl(state->seqno);
-          ack_segment->ackno = htonl(state->received_ackno);
-          ack_segment->window = state->cfg.send_window;
-          ack_segment->flags = htonl(ACK);
-          ack_segment->cksum = 0;
-          uint16_t len = sizeof(ctcp_segment_t);
-          ack_segment->len = htons(len);
-          ack_segment->cksum = cksum(ack_segment, sizeof(ack_segment));
-          conn_send(state->conn, ack_segment, len);
-          state->received_ackno_sent = 1;
-        }
-      }
-    } else {       // last transmitted frame timed out, need resend
-      ctcp_segment_t* segment_resend = state->buffer->head->object;
-      long cur_time = current_time();
-      segment_resend->ackno = htonl(state->received_ackno);
-      if (cur_time - state->last_sent_time > state->cfg.rt_timeout) {  // time out 2 seconds
+    long cur_time = current_time();
+    ctcp_segment_t *segment_to_send = NULL;
+    if (ll_length(state->unacked_buffer) > 0) {  // check if last transmitted frame timed out
+      if (cur_time - state->last_sent_time > state->cfg.rt_timeout) {  // time out
         if (state->retransmitted_times == 5) {
           ctcp_destroy(state);
         } else {
-          conn_send(state->conn, segment_resend, ntohs(segment_resend->len));
-          state->received_ackno_sent = 1;
+          segment_to_send = state->unacked_buffer->head->object;
           state->last_sent_time = cur_time;
           state->retransmitted_times++;
         }
       }
+    } else if (ll_length(state->send_buffer) > 0){
+      segment_to_send = state->send_buffer->head->object;
+      if (ntohl(segment_to_send->flags) & FIN) {
+        state->destroy_flag |= FIN_SENT;
+      }
+      ll_add(state->unacked_buffer, segment_to_send);
+      ll_remove(state->send_buffer, segment_to_send);
+      state->seqno += ntohs(segment_to_send->len);
+      state->last_sent_time = cur_time;
+      state->retransmitted_times = 0;
     }
-    if (state->segments->length > 0) {
-      ctcp_output(state);
+    ll_node_t *ackNode = state->ackno_list->head;
+    if (segment_to_send != NULL) {  // piggyback
+      if (ackNode != NULL) {
+        uint32_t *ackno = ackNode->object;
+        segment_to_send->ackno = htonl(*ackno);
+        ll_remove(state->ackno_list, ackNode);
+        free(ackno);
+      } else {
+        segment_to_send->ackno = htonl(state->ackno);
+      }
+      segment_to_send->cksum = cksum(segment_to_send, sizeof(segment_to_send));
+      conn_send(state->conn, segment_to_send, sizeof(segment_to_send));
+    } else {
+      if (ackNode != NULL) {
+        uint32_t *ackno = ackNode->object;
+        segment_to_send = calloc(sizeof(ctcp_segment_t), 1);
+        segment_to_send->seqno = state->seqno;
+        segment_to_send->ackno = htonl(*ackno);
+        segment_to_send->window = htons(MAX_SEG_DATA_SIZE);
+        segment_to_send->flags = htonl(ACK);
+        segment_to_send->cksum = 0;
+        segment_to_send->len = htons(sizeof(ctcp_segment_t));
+        segment_to_send->cksum = cksum(segment_to_send, sizeof(segment_to_send));
+        conn_send(state->conn, segment_to_send, sizeof(segment_to_send));
+        ll_remove(state->ackno_list, ackNode);
+        free(ackno);
+        state->seqno += sizeof(segment_to_send);
+      }
     }
-    state = state->next;
+
+    if (state->destroy_flag & DESTROY_FLAG) {
+      ctcp_destroy(state);
+    }
+
   }
 }
