@@ -21,7 +21,13 @@
 #define FIN_RECEIVED 1UL << 1
 #define EOF_FLAG 1UL << 2
 #define DESTROY_FLAG ((1UL << 3) - 1)
+#define MAX_SEND_BUF_SIZE 300
 
+typedef struct unack_info {
+  ctcp_segment_t *segment;
+  int retransmitted_times;
+  int last_sent_time;
+};
 /**
  * Connection state.
  *
@@ -50,10 +56,13 @@ struct ctcp_state {
   linked_list_t *send_buffer;
   linked_list_t *unacked_buffer;
   linked_list_t *ackno_list;
+  linked_list_t *received_buffer;
   uint32_t seqno;
   uint32_t ackno;
-  int retransmitted_times;
-  long last_sent_time;
+  uint32_t send_seqno_lo;
+  uint32_t send_seqno_hi;
+  uint32_t receive_seqno_lo;
+  uint32_t receive_seqno_hi;
   uint32_t destroy_flag;
 };
 
@@ -94,10 +103,13 @@ fprintf(stderr, "init called %s\n", "");
   state->send_buffer = ll_create();
   state->unacked_buffer = ll_create();
   state->ackno_list = ll_create();
-  state->last_sent_time = 0;
-  state->retransmitted_times = 0;
+  state->received_buffer = ll_create();
+  state->send_seqno_lo = 1;
+  state->send_seqno_hi = 1 + cfg->send_window;
+  state->receive_seqno_lo = 1;
+  state->receive_seqno_hi = 1 + cfg->recv_window;
   state->destroy_flag = 0;
-  fprintf(stderr, "init call ended %s\n", "");
+  // fprintf(stderr, "init call ended %s\n", "");
   return state;
 }
 void free_segments_list(linked_list_t *list) {
@@ -127,8 +139,12 @@ void ctcp_destroy(ctcp_state_t *state) {
 }
 
 
-void ctcp_read(ctcp_state_t *state) {
+void ctcp_read(ctcp_state_t *state) {   // TODO: 1.send buffer full, 2.data size too large
   /* FIXME */
+  if (ll_length(state->send_buffer) == MAX_SEND_BUF_SIZE) {
+    fprintf(stderr, "send buffer full, can't read more");
+    return;
+  }
   char input[MAX_SEG_DATA_SIZE];
   int data_size = conn_input(state->conn, input, MAX_SEG_DATA_SIZE);
   fprintf(stderr, "read data size = %u", data_size);
@@ -276,6 +292,6 @@ void ctcp_timer() {
     if (state->destroy_flag & DESTROY_FLAG) {
       ctcp_destroy(state);
     }
-
+    state = state->next;
   }
 }
