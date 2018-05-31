@@ -245,7 +245,7 @@ void ack_received(ctcp_state_t *state, uint32_t ackno) {
 
 void ctcp_receive(ctcp_state_t *state, ctcp_segment_t *segment, size_t len) {
   /* FIXME */
-  fprintf(stderr, "message received  %s with lenth %zu\n", segment->data, data_length(segment));
+  fprintf(stderr, "message received  %s with lenth %hu\n", segment->data, data_length(segment));
   ack_received(state, ntohl(segment->ackno));
   // received content
   uint16_t old_cksum = segment->cksum;
@@ -290,7 +290,7 @@ void ctcp_output(ctcp_state_t *state) {
     if (data_length(segment) > 0) {
       if (bufspace > data_length(segment)) {
         if (conn_output(state->conn, segment->data, data_length(segment)) != data_length(segment)) {
-          fprintf(stderr, "output length not equal to segment data length %zu", data_length(segment));
+          fprintf(stderr, "output length not equal to segment data length %hu", data_length(segment));
         }
       } else {
         fprintf(stderr, "output buf space full");
@@ -314,7 +314,7 @@ void ctcp_timer() {
     long cur_time = current_time();
     ctcp_segment_t *segment_to_send = NULL;
     if (ll_length(state->unacked_buffer) > 0) {  // check if last transmitted frame timed out
-      unack_info_t *info = ll_front(state->unacked_buffer);
+      unack_info_t *info = ll_front(state->unacked_buffer)->object;
       if (cur_time - info->last_sent_time > state->cfg.rt_timeout) {  // time out
         if (info->retransmitted_times == 5) {
           fprintf(stderr, "retransmitted times = 5\n");
@@ -369,7 +369,7 @@ void ctcp_timer() {
       free(segment_to_send);
       ll_remove(state->ackno_list, ackNode);
     }
-    ll_node_t *temp = state->next;
+    ctcp_state_t *temp = state->next;
     if (state->destroy_flag & DESTROY_FLAG) {
       //fprintf(stderr, "destroy_flag");
       ctcp_destroy(state);
