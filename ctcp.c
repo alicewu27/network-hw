@@ -137,35 +137,36 @@ void ctcp_destroy(ctcp_state_t *state) {
 }
 
 
-void ctcp_read(ctcp_state_t *state) {   // TODO: 1.send buffer full, 2.data size too large
+void ctcp_read(ctcp_state_t *state) {   // TODO: 1.send buffer full, 2.data larger than window size
   /* FIXME */
   /*if (ll_length(state->send_buffer) == MAX_SEND_BUF_SIZE) {
     fprintf(stderr, "send buffer full, can't read more");
     return;
-    }*/
-  char input[MAX_SEG_DATA_SIZE];
-  int data_size = conn_input(state->conn, input, MAX_SEG_DATA_SIZE);
-  fprintf(stderr, "read data size = %u", data_size);
+    }*/char input[MAX_SEG_DATA_SIZE];
+  int data_size = 0;
+  while ((data_size = conn_input(state->conn, input, MAX_SEG_DATA_SIZE)) > 0) {
+    fprintf(stderr, "read data size = %u", data_size);
+    uint16_t total_size = sizeof(ctcp_segment_t) + sizeof(char) * data_size;
+    ctcp_segment_t *segment = calloc(total_size, 1);
+    segment->seqno = htonl(state->seqno);
+    segment->len = htons(total_size);
+    segment->window = htons(MAX_SEG_DATA_SIZE);
+    segment->cksum = 0;
+    if (data_size > 0) {
+      memcpy(segment->data, input, data_size);
+    } else if (state->destroy_flag & EOF_FLAG){
+      segment->flags = FIN;
+    }
+    segment->flags |= ACK;
+    segment->flags = htonl(segment->flags);
+    ll_add (state->send_buffer, segment);
+    state->seqno += total_size;
+  }
   if (data_size == -1) {
     state->destroy_flag |= EOF_FLAG;
-    data_size = 0;
   }
-  uint16_t total_size = sizeof(ctcp_segment_t) + sizeof(char) * data_size;
-  ctcp_segment_t *segment = calloc(total_size, 1);
-  segment->seqno = htonl(state->seqno);
-  segment->len = htons(total_size);
-  segment->window = htons(MAX_SEG_DATA_SIZE);
-  segment->cksum = 0;
-  if (data_size > 0) {
-    memcpy(segment->data, input, data_size);
-  } else if (state->destroy_flag & EOF_FLAG){
-    segment->flags = FIN;
-  }
-  segment->flags |= ACK;
-  segment->flags = htonl(segment->flags);
-  ll_add (state->send_buffer, segment);
-  state->seqno += total_size;
 }
+
 
 uint16_t data_length(ctcp_segment_t *segment) {
   return ntohs(segment->len) - sizeof(ctcp_segment_t);
@@ -371,7 +372,7 @@ void ctcp_timer() {
     ctcp_state_t *temp = state->next;
     if (state->destroy_flag & DESTROY_FLAG) {
       //fprintf(stderr, "destroy_flag");
-      //ctcp_destroy(state);
+      ctcp_destroy(state);
     }
     state = temp;
   }
