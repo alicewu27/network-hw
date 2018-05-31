@@ -139,10 +139,10 @@ void ctcp_destroy(ctcp_state_t *state) {
 
 void ctcp_read(ctcp_state_t *state) {   // TODO: 1.send buffer full, 2.data size too large
   /* FIXME */
-  if (ll_length(state->send_buffer) == MAX_SEND_BUF_SIZE) {
+  /*if (ll_length(state->send_buffer) == MAX_SEND_BUF_SIZE) {
     fprintf(stderr, "send buffer full, can't read more");
     return;
-  }
+    }*/
   char input[MAX_SEG_DATA_SIZE];
   int data_size = conn_input(state->conn, input, MAX_SEG_DATA_SIZE);
   fprintf(stderr, "read data size = %u", data_size);
@@ -310,7 +310,6 @@ void ctcp_timer() {
   /* FIXME */
   ctcp_state_t *state = state_list;
   while (state != NULL){
-    ctcp_output(state);
     long cur_time = current_time();
     ctcp_segment_t *segment_to_send = NULL;
     if (ll_length(state->unacked_buffer) > 0) {  // check if last transmitted frame timed out
@@ -372,7 +371,7 @@ void ctcp_timer() {
     ctcp_state_t *temp = state->next;
     if (state->destroy_flag & DESTROY_FLAG) {
       //fprintf(stderr, "destroy_flag");
-      ctcp_destroy(state);
+      //ctcp_destroy(state);
     }
     state = temp;
   }
